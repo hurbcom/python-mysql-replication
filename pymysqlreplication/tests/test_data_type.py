@@ -3,6 +3,7 @@
 import copy
 import platform
 import sys
+import os
 if sys.version_info < (2, 7):
     import unittest2 as unittest
 else:
@@ -36,7 +37,10 @@ class TestDataType(base.PyMySQLReplicationTestCase):
 
     def create_and_insert_value(self, create_query, insert_query):
         self.execute(create_query)
-        self.execute(insert_query)
+        if type(insert_query) is tuple: 
+            self.execute(insert_query[0], insert_query[1])
+        else:
+            self.execute(insert_query)
         self.execute("COMMIT")
 
         self.assertIsInstance(self.stream.fetchone(), RotateEvent)
@@ -550,6 +554,18 @@ class TestDataType(base.PyMySQLReplicationTestCase):
         insert_query = "INSERT INTO test (id, value) VALUES (1, '{\"my_key\": \"%s\"}');" % (string_value,)
         event = self.create_and_insert_value(create_query, insert_query)
         self.assertEqual(event.rows[0]["values"]["value"], to_binary_dict({"my_key": string_value}))
+
+
+    def test_json_long_literal(self):
+        if not self.isMySQL57():
+            self.skipTest("Json is only supported in mysql 5.7")
+        create_query = "CREATE TABLE test (id int, value json);"
+        # The string length needs to be larger than what can fit in a single byte.
+        with open('{}/pymysqlreplication/tests/mock.json'.format(os.getcwd())) as f:
+            string_value = f.readlines()
+        insert_query = ("INSERT INTO test (id, value) VALUES (1, %s);", [string_value])
+        event = self.create_and_insert_value(create_query, insert_query)
+        self.assertTrue(len(event.rows[0]["values"]["value"]) == 38)
 
     def test_null(self):
         create_query = "CREATE TABLE test ( \

@@ -38,7 +38,7 @@ class PyMySQLReplicationTestCase(base):
         db = copy.copy(self.database)
         db["db"] = None
         self.connect_conn_control(db)
-        self.execute("SET GLOBAL time_zone = 'UTC';")
+        # self.execute("SET GLOBAL time_zone = 'Etc/GMT';")
         self.execute("DROP DATABASE IF EXISTS pymysqlreplication_test")
         self.execute("CREATE DATABASE pymysqlreplication_test")
         db = copy.copy(self.database)
@@ -80,9 +80,12 @@ class PyMySQLReplicationTestCase(base):
         self.stream.close()
         self.stream = None
 
-    def execute(self, query):
+    def execute(self, query, opts=None):
         c = self.conn_control.cursor()
-        c.execute(query)
+        if opts is None:
+            c.execute(query)
+        else:
+            c.execute(query, *opts)
         return c
 
     def resetBinLog(self):
