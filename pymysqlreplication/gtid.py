@@ -331,6 +331,3 @@ class GtidSet(object):
         (n_sid,) = struct.unpack('<Q', payload.read(8))
 
         return cls([Gtid.decode(payload) for _ in range(0, n_sid)])
-
-    def __eq__(self, other):
-        return self.gtids == other.gtids

@@ -1,5 +1,9 @@
 # -*- coding: utf-8 -*-
 
+import sys, os
+
+os.environ['TZ'] = 'GMT' # change accordingly
+
 from pymysqlreplication.tests.test_basic import *
 from pymysqlreplication.tests.test_data_type import *
 from pymysqlreplication.tests.test_data_objects import *
