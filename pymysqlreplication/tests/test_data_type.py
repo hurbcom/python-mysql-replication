@@ -555,17 +555,33 @@ class TestDataType(base.PyMySQLReplicationTestCase):
         event = self.create_and_insert_value(create_query, insert_query)
         self.assertEqual(event.rows[0]["values"]["value"], to_binary_dict({"my_key": string_value}))
 
-
     def test_json_long_literal(self):
         if not self.isMySQL57():
             self.skipTest("Json is only supported in mysql 5.7")
         create_query = "CREATE TABLE test (id int, value json);"
         # The string length needs to be larger than what can fit in a single byte.
-        with open('{}/pymysqlreplication/tests/mock.json'.format(os.getcwd())) as f:
-            string_value = f.readlines()
+        mock_path = '{}/pymysqlreplication/tests/mock.json'.format(os.getcwd())
+        string_value = open(mock_path).read().replace('\n', '')
         insert_query = ("INSERT INTO test (id, value) VALUES (1, %s);", [string_value])
         event = self.create_and_insert_value(create_query, insert_query)
-        self.assertTrue(len(event.rows[0]["values"]["value"]) == 38)
+        self.assertTrue(len(event.rows[0]["values"]["value"]) == 22)
+        event.rows[0]["values"]["value"]['name'] = 'another'
+        string_value_new = json.dumps(event.rows[0]["values"]["value"])
+        update_query = ("UPDATE test set value=%s where id = 1;", [string_value_new])
+        self.resetBinLog()
+        self.execute(update_query[0], update_query[1])
+        self.execute("COMMIT")
+        self.assertIsInstance(self.stream.fetchone(), RotateEvent)
+        self.assertIsInstance(self.stream.fetchone(), FormatDescriptionEvent)
+        self.assertIsInstance(self.stream.fetchone(), QueryEvent)
+        self.assertIsInstance(self.stream.fetchone(), TableMapEvent)
+        event = self.stream.fetchone()
+        self.assertEqual(event.event_type, UPDATE_ROWS_EVENT_V2)
+        self.assertIsInstance(event, UpdateRowsEvent)
+        self.assertEqual(event.rows[0]["before_values"]["id"], 1)
+        self.assertEqual(event.rows[0]["before_values"]["value"]['name'], 'Kerri Peters')
+        self.assertEqual(event.rows[0]["after_values"]["id"], 1)
+        self.assertEqual(event.rows[0]["after_values"]["value"]['name'], 'another')
 
     def test_null(self):
         create_query = "CREATE TABLE test ( \
