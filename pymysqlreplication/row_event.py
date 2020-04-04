@@ -16,6 +16,7 @@ from .column import Column
 from .table import Table
 from .bitmap import BitCount, BitGet
 
+
 class RowsEvent(BinLogEvent):
     def __init__(self, from_packet, event_size, table_map, ctl_connection, **kwargs):
         super(RowsEvent, self).__init__(from_packet, event_size, table_map,

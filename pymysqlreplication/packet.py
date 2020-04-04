@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 
 import struct
+import binascii
+import decimal
+import json
 
 from pymysql.util import byte2int
 
@@ -100,7 +103,7 @@ class BinLogPacketWrapper(object):
         # -1 because we ignore the ok byte
         self.read_bytes = 0
         # Used when we want to override a value in the data buffer
-        self.__data_buffer = b''
+        self.data_buffer = b''
 
         self.packet = from_packet
         self.charset = ctl_connection.charset
@@ -148,9 +151,9 @@ class BinLogPacketWrapper(object):
     def read(self, size):
         size = int(size)
         self.read_bytes += size
-        if len(self.__data_buffer) > 0:
-            data = self.__data_buffer[:size]
-            self.__data_buffer = self.__data_buffer[size:]
+        if len(self.data_buffer) > 0:
+            data = self.data_buffer[:size]
+            self.data_buffer = self.data_buffer[size:]
             if len(data) == size:
                 return data
             else:
@@ -162,14 +165,14 @@ class BinLogPacketWrapper(object):
         to extract a bit from a value a let the rest of the code normally
         read the datas'''
         self.read_bytes -= len(data)
-        self.__data_buffer += data
+        self.data_buffer += data
 
     def advance(self, size):
         size = int(size)
         self.read_bytes += size
-        buffer_len = len(self.__data_buffer)
+        buffer_len = len(self.data_buffer)
         if buffer_len > 0:
-            self.__data_buffer = self.__data_buffer[size:]
+            self.data_buffer = self.data_buffer[size:]
             if size > buffer_len:
                 self.packet.advance(size - buffer_len)
         else:
@@ -351,10 +354,38 @@ class BinLogPacketWrapper(object):
     def read_binary_json(self, size):
         length = self.read_uint_by_size(size)
         payload = self.read(length)
-        self.unread(payload)
-        t = self.read_uint8()
 
-        return self.read_binary_json_type(t, length)
+        try:
+            new_json = BinLogPacketWrapperJson(self, length, payload)
+            t = new_json.read_uint8()
+            return new_json.read_binary_json_type(t, length)
+        except Exception as e:
+            print(length)
+            print(binascii.hexlify(payload))
+            print(e)
+            return None
+
+
+class BinLogPacketWrapperJson(BinLogPacketWrapper):
+    def __init__(self, original_packet, length, payload):
+        self.read_bytes = original_packet.read_bytes
+        # Used when we want to override a value in the data buffer
+        self.data_buffer = original_packet.data_buffer
+
+        self.packet = original_packet.packet
+        self.charset = original_packet.charset
+
+        # Header
+        self.timestamp = original_packet.timestamp
+        self.event_type = original_packet.event_type
+        self.server_id = original_packet.server_id
+        self.event_size = original_packet.event_size
+        # position of the next event
+        self.log_pos = original_packet.log_pos
+        self.flags = original_packet.flags
+        self.event = original_packet.event
+        self.unread(payload)
+        self.unread(str(length))
 
     def read_binary_json_type(self, t, length):
         large = (t in (JSONB_TYPE_LARGE_OBJECT, JSONB_TYPE_LARGE_ARRAY))
@@ -386,8 +417,69 @@ class BinLogPacketWrapper(object):
             return self.read_int64()
         elif t == JSONB_TYPE_UINT64:
             return self.read_uint64()
+        elif t == JSONB_TYPE_OPAQUE:
+            return self.read_opaque(length)
 
         raise ValueError('Json type %d is not handled' % t)
+
+    def read_opaque(self, length):
+        t = self.read_uint8()
+        if t == 246:
+            return self.read_new_decimal()
+
+        raise ValueError('Json Opaque type %d is not handled' % t)
+
+    def read_new_decimal(self):
+        precision = self.read_uint8()
+        decimals = self.read_uint8()
+        """Read MySQL's new decimal format introduced in MySQL 5"""
+
+        # This project was a great source of inspiration for
+        # understanding this storage format.
+        # https://github.com/jeremycole/mysql_binlog
+
+        digits_per_integer = 9
+        compressed_bytes = [0, 1, 1, 2, 2, 3, 3, 4, 4, 4]
+        integral = (precision - decimals)
+        uncomp_integral = int(integral / digits_per_integer)
+        uncomp_fractional = int(decimals / digits_per_integer)
+        comp_integral = integral - (uncomp_integral * digits_per_integer)
+        comp_fractional = decimals - (uncomp_fractional
+                                             * digits_per_integer)
+
+        # Support negative
+        # The sign is encoded in the high bit of the the byte
+        # But this bit can also be used in the value
+        value = self.read_uint8()
+        if value & 0x80 != 0:
+            res = ""
+            mask = 0
+        else:
+            mask = -1
+            res = "-"
+        self.unread(struct.pack('<B', value ^ 0x80))
+
+        size = compressed_bytes[comp_integral]
+        if size > 0:
+            value = self.read_int_be_by_size(size) ^ mask
+            res += str(value)
+
+        for i in range(0, uncomp_integral):
+            value = struct.unpack('>i', self.read(4))[0] ^ mask
+            res += '%09d' % value
+
+        res += "."
+
+        for i in range(0, uncomp_fractional):
+            value = struct.unpack('>i', self.read(4))[0] ^ mask
+            res += '%09d' % value
+
+        size = compressed_bytes[comp_fractional]
+        if size > 0:
+            value = self.read_int_be_by_size(size) ^ mask
+            res += '%0*d' % (comp_fractional, value)
+
+        return decimal.Decimal(res)
 
     def read_binary_json_type_inlined(self, t, large):
         if t == JSONB_TYPE_LITERAL:
@@ -461,6 +553,8 @@ class BinLogPacketWrapper(object):
         values_type_offset_inline = [
             read_offset_or_inline(self, large)
             for _ in range(elements)]
+        # print(values_type_offset_inline)
+        # print("elements: %d, size: %d, large: %d" %(elements, size, large))
 
         def _read(x):
             if x[1] is None:

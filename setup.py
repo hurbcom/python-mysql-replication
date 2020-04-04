@@ -34,10 +34,10 @@ class TestCommand(Command):
         unittest.main(tests, argv=sys.argv[:1])
 
 
-version = "0.21"
+version = "0.32"
 
 setup(
-    name="mysql-replication",
+    name="hurb-mysql-replication",
     version=version,
     url="https://github.com/noplay/python-mysql-replication",
     author="Julien Duponchelle",
