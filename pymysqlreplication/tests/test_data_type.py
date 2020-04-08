@@ -2,6 +2,7 @@
 
 import copy
 import platform
+import json
 import sys
 import os
 if sys.version_info < (2, 7):
@@ -15,6 +16,7 @@ from pymysqlreplication.tests import base
 from pymysqlreplication.constants.BINLOG import *
 from pymysqlreplication.row_event import *
 from pymysqlreplication.event import *
+from pymysqlreplication.protocol import WrapperJson
 from pymysqlreplication._compat import text_type
 
 
@@ -558,13 +560,13 @@ class TestDataType(base.PyMySQLReplicationTestCase):
     def test_json_long_literal(self):
         if not self.isMySQL57():
             self.skipTest("Json is only supported in mysql 5.7")
-        create_query = "CREATE TABLE test (id int, value json);"
+        create_query = "CREATE TABLE test (id int, x1 text, value json);"
         # The string length needs to be larger than what can fit in a single byte.
         mock_path = '{}/pymysqlreplication/tests/mock.json'.format(os.getcwd())
         string_value = open(mock_path).read().replace('\n', '')
         insert_query = ("INSERT INTO test (id, value) VALUES (1, %s);", [string_value])
         event = self.create_and_insert_value(create_query, insert_query)
-        self.assertTrue(len(event.rows[0]["values"]["value"]) == 22)
+        self.assertTrue(len(event.rows[0]["values"]["value"]) == 38)
         event.rows[0]["values"]["value"]['name'] = 'another'
         string_value_new = json.dumps(event.rows[0]["values"]["value"])
         update_query = ("UPDATE test set value=%s where id = 1;", [string_value_new])
@@ -582,6 +584,16 @@ class TestDataType(base.PyMySQLReplicationTestCase):
         self.assertEqual(event.rows[0]["before_values"]["value"]['name'], 'Kerri Peters')
         self.assertEqual(event.rows[0]["after_values"]["id"], 1)
         self.assertEqual(event.rows[0]["after_values"]["value"]['name'], 'another')
+        self.assertIsInstance(self.stream.fetchone(), XidEvent)
+
+    # def test_json_long_parser(self):
+    #     mock_path = '{}/pymysqlreplication/tests/mock_json_bytes.txt'.format(os.getcwd())
+    #     f = open(mock_path, 'rb')
+    #     json_payload = f.read()
+    #     json_parser = WrapperJson(json_payload)
+    #     t = json_parser.read_uint8()
+    #     json_parsed = json_parser.read_binary_json_type(t, len(json_payload))
+    #     self.assertEqual(len(json_parsed), 37)
 
     def test_null(self):
         create_query = "CREATE TABLE test ( \

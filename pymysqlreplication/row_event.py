@@ -3,7 +3,7 @@
 import struct
 import decimal
 import datetime
-import json
+import logging
 
 from pymysql.util import byte2int
 from pymysql.charset import charset_to_encoding
@@ -13,8 +13,11 @@ from .exceptions import TableMetadataUnavailableError
 from .constants import FIELD_TYPE
 from .constants import BINLOG
 from .column import Column
+from .protocol import WrapperJson
 from .table import Table
 from .bitmap import BitCount, BitGet
+
+log = logging.getLogger(__name__)
 
 
 class RowsEvent(BinLogEvent):
@@ -179,7 +182,9 @@ class RowsEvent(BinLogEvent):
                 values[name] = self.packet.read_length_coded_pascal_string(
                     column.length_size)
             elif column.type == FIELD_TYPE.JSON:
-                values[name] = self.packet.read_binary_json(column.length_size)
+                length = self.packet.read_uint_by_size(column.length_size)
+                json_payload = self.packet.read(length)
+                values[name] = self._parse_json(json_payload, length, column)
             else:
                 raise NotImplementedError("Unknown MySQL column type: %d" %
                                           (column.type))
@@ -187,6 +192,16 @@ class RowsEvent(BinLogEvent):
             nullBitmapIndex += 1
 
         return values
+
+    def _parse_json(self, json_payload, size, column):
+        try:
+            json_parser = WrapperJson(json_payload)
+            t = json_parser.read_uint8()
+            return json_parser.read_binary_json_type(t, size)
+        except Exception as e:
+            log.exception(e)
+            # import pdb; pdb.set_trace()
+            return json_payload, size
 
     def __add_fsp_to_time(self, time, column):
         """Read and add the fractional part of time
@@ -630,3 +645,5 @@ class TableMapEvent(BinLogEvent):
         print("Schema: %s" % (self.schema))
         print("Table: %s" % (self.table))
         print("Columns: %s" % (self.column_count))
+
+
