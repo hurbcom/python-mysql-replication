@@ -394,7 +394,7 @@ class WrapperJson(WrapperPayload):
                 try:
                     data = self.read_binary_json_type(field[0], length)
                 except Exception as e:
-                    log.exception(e)
+                    # log.exception(e)
                     data = None
 
             out[key] = data

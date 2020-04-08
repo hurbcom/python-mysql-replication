@@ -199,8 +199,7 @@ class RowsEvent(BinLogEvent):
             t = json_parser.read_uint8()
             return json_parser.read_binary_json_type(t, size)
         except Exception as e:
-            log.exception(e)
-            # import pdb; pdb.set_trace()
+            # log.exception(e)
             return json_payload, size
 
     def __add_fsp_to_time(self, time, column):
