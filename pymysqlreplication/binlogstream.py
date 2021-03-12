@@ -2,19 +2,20 @@
 
 import pymysql
 import struct
+from distutils.version import LooseVersion
 
 from pymysql.constants.COMMAND import COM_BINLOG_DUMP, COM_REGISTER_SLAVE
 from pymysql.cursors import DictCursor
 from pymysql.util import int2byte
 
 from .packet import BinLogPacketWrapper
-from .constants.BINLOG import TABLE_MAP_EVENT, ROTATE_EVENT, FORMAT_DESCRIPTION_EVENT
+from .constants.BINLOG import TABLE_MAP_EVENT, ROTATE_EVENT
 from .gtid import GtidSet
 from .event import (
     QueryEvent, RotateEvent, FormatDescriptionEvent,
-    XidEvent, GtidEvent, StopEvent, XAPrepareEvent,
+    XidEvent, GtidEvent, StopEvent,
     BeginLoadQueryEvent, ExecuteLoadQueryEvent,
-    HeartbeatLogEvent, IntvarEvent, NotImplementedEvent)
+    HeartbeatLogEvent, NotImplementedEvent)
 from .exceptions import BinLogNotEnabled
 from .row_event import (
     UpdateRowsEvent, WriteRowsEvent, DeleteRowsEvent, TableMapEvent)
@@ -218,7 +219,6 @@ class BinLogStreamReader(object):
             self.pymysql_wrapper = pymysql_wrapper
         else:
             self.pymysql_wrapper = pymysql.connect
-        self.mysql_version = (0, 0, 0)
 
     def close(self):
         if self.__connected_stream:
@@ -260,7 +260,7 @@ class BinLogStreamReader(object):
 
         packet = self.report_slave.encoded(self.__server_id)
 
-        if pymysql.__version__ < "0.6":
+        if pymysql.__version__ < LooseVersion("0.6"):
             self._stream_connection.wfile.write(packet)
             self._stream_connection.wfile.flush()
             self._stream_connection.read_packet()
@@ -408,7 +408,7 @@ class BinLogStreamReader(object):
             # encoded_data
             prelude += gtid_set.encoded()
 
-        if pymysql.__version__ < "0.6":
+        if pymysql.__version__ < LooseVersion("0.6"):
             self._stream_connection.wfile.write(prelude)
             self._stream_connection.wfile.flush()
         else:
@@ -425,7 +425,7 @@ class BinLogStreamReader(object):
                 self.__connect_to_ctl()
 
             try:
-                if pymysql.__version__ < "0.6":
+                if pymysql.__version__ < LooseVersion("0.6"):
                     pkt = self._stream_connection.read_packet()
                 else:
                     pkt = self._stream_connection._read_packet()
@@ -446,7 +446,6 @@ class BinLogStreamReader(object):
 
             binlog_event = BinLogPacketWrapper(pkt, self.table_map,
                                                self._ctl_connection,
-                                               self.mysql_version,
                                                self.__use_checksum,
                                                self.__allowed_events_in_packet,
                                                self.__only_tables,
@@ -509,9 +508,6 @@ class BinLogStreamReader(object):
             if binlog_event.event is None or (binlog_event.event.__class__ not in self.__allowed_events):
                 continue
 
-            if binlog_event.event_type == FORMAT_DESCRIPTION_EVENT:
-                self.mysql_version = binlog_event.event.mysql_version
-
             return binlog_event.event
 
     def _allowed_event_list(self, only_events, ignored_events,
@@ -524,14 +520,12 @@ class BinLogStreamReader(object):
                 RotateEvent,
                 StopEvent,
                 FormatDescriptionEvent,
-                XAPrepareEvent,
                 XidEvent,
                 GtidEvent,
                 BeginLoadQueryEvent,
                 ExecuteLoadQueryEvent,
                 UpdateRowsEvent,
                 WriteRowsEvent,
-                IntvarEvent,
                 DeleteRowsEvent,
                 TableMapEvent,
                 HeartbeatLogEvent,

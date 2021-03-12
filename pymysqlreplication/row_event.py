@@ -3,22 +3,18 @@
 import struct
 import decimal
 import datetime
-import logging
+import json
 
 from pymysql.util import byte2int
-from pymysql.charset import charset_to_encoding
+from pymysql.charset import charset_by_name
 
 from .event import BinLogEvent
 from .exceptions import TableMetadataUnavailableError
 from .constants import FIELD_TYPE
 from .constants import BINLOG
 from .column import Column
-from .protocol import WrapperJson
 from .table import Table
 from .bitmap import BitCount, BitGet
-
-log = logging.getLogger(__name__)
-
 
 class RowsEvent(BinLogEvent):
     def __init__(self, from_packet, event_size, table_map, ctl_connection, **kwargs):
@@ -182,9 +178,7 @@ class RowsEvent(BinLogEvent):
                 values[name] = self.packet.read_length_coded_pascal_string(
                     column.length_size)
             elif column.type == FIELD_TYPE.JSON:
-                length = self.packet.read_uint_by_size(column.length_size)
-                json_payload = self.packet.read(length)
-                values[name] = self._parse_json(json_payload, length, column)
+                values[name] = self.packet.read_binary_json(column.length_size)
             else:
                 raise NotImplementedError("Unknown MySQL column type: %d" %
                                           (column.type))
@@ -192,15 +186,6 @@ class RowsEvent(BinLogEvent):
             nullBitmapIndex += 1
 
         return values
-
-    def _parse_json(self, json_payload, size, column):
-        try:
-            json_parser = WrapperJson(json_payload)
-            t = json_parser.read_uint8()
-            return json_parser.read_binary_json_type(t, size)
-        except Exception as e:
-            # log.exception(e)
-            return json_payload, size
 
     def __add_fsp_to_time(self, time, column):
         """Read and add the fractional part of time
@@ -227,10 +212,16 @@ class RowsEvent(BinLogEvent):
             return microsecond * (10 ** (6-column.fsp))
         return 0
 
+    @staticmethod
+    def charset_to_encoding(name):
+        charset = charset_by_name(name)
+        return charset.encoding if charset else name
+
     def __read_string(self, size, column):
         string = self.packet.read_length_coded_pascal_string(size)
         if column.character_set_name is not None:
-            string = string.decode(charset_to_encoding(column.character_set_name))
+            encoding = self.charset_to_encoding(column.character_set_name)
+            string = string.decode(encoding)
         return string
 
     def __read_bit(self, column):
@@ -541,7 +532,7 @@ class UpdateRowsEvent(RowsEvent):
 
 
 class TableMapEvent(BinLogEvent):
-    """This evenement describe the structure of a table.
+    """This event describes the structure of a table.
     It's sent before a change happens on a table.
     An end user of the lib should have no usage of this
     """
@@ -644,5 +635,3 @@ class TableMapEvent(BinLogEvent):
         print("Schema: %s" % (self.schema))
         print("Table: %s" % (self.table))
         print("Columns: %s" % (self.column_count))
-
-

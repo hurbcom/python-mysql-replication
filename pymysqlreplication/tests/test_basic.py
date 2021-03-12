@@ -25,9 +25,9 @@ class TestBasicBinLogStreamReader(base.PyMySQLReplicationTestCase):
         return [GtidEvent]
 
     def test_allowed_event_list(self):
-        self.assertEqual(len(self.stream._allowed_event_list(None, None, False)), 16)
-        self.assertEqual(len(self.stream._allowed_event_list(None, None, True)), 15)
-        self.assertEqual(len(self.stream._allowed_event_list(None, [RotateEvent], False)), 15)
+        self.assertEqual(len(self.stream._allowed_event_list(None, None, False)), 14)
+        self.assertEqual(len(self.stream._allowed_event_list(None, None, True)), 13)
+        self.assertEqual(len(self.stream._allowed_event_list(None, [RotateEvent], False)), 13)
         self.assertEqual(len(self.stream._allowed_event_list([RotateEvent], None, False)), 1)
 
     def test_read_query_event(self):
@@ -59,6 +59,7 @@ class TestBasicBinLogStreamReader(base.PyMySQLReplicationTestCase):
         event = self.stream.fetchone()
         self.assertIsInstance(event, QueryEvent)
         self.assertEqual(event.query, query)
+
 
     def test_reading_rotate_event(self):
         query = "CREATE TABLE test_2 (id INT NOT NULL AUTO_INCREMENT, data VARCHAR (50) NOT NULL, PRIMARY KEY (id))"
@@ -715,7 +716,7 @@ class TestCTLConnectionSettings(base.PyMySQLReplicationTestCase):
         super(TestCTLConnectionSettings, self).tearDown()
         self.ctl_conn_control.close()
 
-    def test_seperate_ctl_settings_table_metadata_unavailable(self):
+    def test_separate_ctl_settings_table_metadata_unavailable(self):
         self.execute("CREATE TABLE test (id INTEGER(11))")
         self.execute("INSERT INTO test VALUES (1)")
         self.execute("COMMIT")
@@ -730,7 +731,7 @@ class TestCTLConnectionSettings(base.PyMySQLReplicationTestCase):
             self.resetBinLog()
             assert had_error
 
-    def test_seperate_ctl_settings_no_error(self):
+    def test_separate_ctl_settings_no_error(self):
         self.execute("CREATE TABLE test (id INTEGER(11))")
         self.execute("INSERT INTO test VALUES (1)")
         self.execute("DROP TABLE test")

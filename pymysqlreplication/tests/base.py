@@ -31,14 +31,11 @@ class PyMySQLReplicationTestCase(base):
             "charset": "utf8",
             "db": "pymysqlreplication_test"
         }
-        if os.getenv("TRAVIS") is not None and db == "mysql56":
-            self.database["user"] = "travis"
 
         self.conn_control = None
         db = copy.copy(self.database)
         db["db"] = None
         self.connect_conn_control(db)
-        # self.execute("SET GLOBAL time_zone = 'Etc/GMT';")
         self.execute("DROP DATABASE IF EXISTS pymysqlreplication_test")
         self.execute("CREATE DATABASE pymysqlreplication_test")
         db = copy.copy(self.database)
@@ -80,12 +77,9 @@ class PyMySQLReplicationTestCase(base):
         self.stream.close()
         self.stream = None
 
-    def execute(self, query, opts=None):
+    def execute(self, query):
         c = self.conn_control.cursor()
-        if opts is None:
-            c.execute(query)
-        else:
-            c.execute(query, *opts)
+        c.execute(query)
         return c
 
     def resetBinLog(self):
