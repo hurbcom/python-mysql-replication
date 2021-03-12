@@ -34,7 +34,7 @@ class TestCommand(Command):
         unittest.main(tests, argv=sys.argv[:1])
 
 
-version = "0.56"
+version = "0.57"
 
 setup(
     name="hurb-mysql-replication",
