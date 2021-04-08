@@ -8,11 +8,25 @@ from pymysql.util import byte2int
 from pymysqlreplication import constants, event, row_event
 from pymysqlreplication.protocol import StructMysql
 
+from .constants import *
+
 log = getLogger(__name__)
 
 # Constants from PyMYSQL source code
-UNSIGNED_CHAR_LENGTH = 1
 
+
+def read_offset_or_inline(packet, large):
+    t = packet.read_uint8()
+
+    if t in (JSONB_TYPE_LITERAL,
+             JSONB_TYPE_INT16, JSONB_TYPE_UINT16):
+        return (t, None, packet.read_binary_json_type_inlined(t, large))
+    if large and t in (JSONB_TYPE_INT32, JSONB_TYPE_UINT32):
+        return (t, None, packet.read_binary_json_type_inlined(t, large))
+
+    if large:
+        return (t, packet.read_uint32(), None)
+    return (t, packet.read_uint16(), None)
 
 class BinLogPacketWrapper(StructMysql):
     """
@@ -396,3 +410,33 @@ class BinLogPacketWrapper(StructMysql):
             return self.read_binary_json_type(x[0], length)
 
         return [_read(x) for x in values_type_offset_inline]
+
+    def read_length_coded_binary(self):
+        """Read a 'Length Coded Binary' number from the data buffer.
+        Length coded numbers can be anywhere from 1 to 9 bytes depending
+        on the value of the first byte.
+        From PyMYSQL source code
+        """
+        c = byte2int(self.read(1))
+        if c == NULL_COLUMN:
+            return None
+        if c < UNSIGNED_CHAR_COLUMN:
+            return c
+        elif c == UNSIGNED_SHORT_COLUMN:
+            return self.unpack_uint16(self.read(UNSIGNED_SHORT_LENGTH))
+        elif c == UNSIGNED_INT24_COLUMN:
+            return self.unpack_int24(self.read(UNSIGNED_INT24_LENGTH))
+        elif c == UNSIGNED_INT64_COLUMN:
+            return self.unpack_int64(self.read(UNSIGNED_INT64_LENGTH))
+
+    def read_length_coded_string(self):
+        """Read a 'Length Coded String' from the data buffer.
+        A 'Length Coded String' consists first of a length coded
+        (unsigned, positive) integer represented in 1-9 bytes followed by
+        that many bytes of binary data.  (For example "cat" would be "3cat".)
+        From PyMYSQL source code
+        """
+        length = self.read_length_coded_binary()
+        if length is None:
+            return None
+        return self.read(length).decode()
