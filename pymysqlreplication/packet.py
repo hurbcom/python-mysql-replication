@@ -28,6 +28,7 @@ def read_offset_or_inline(packet, large):
         return (t, packet.read_uint32(), None)
     return (t, packet.read_uint16(), None)
 
+
 class BinLogPacketWrapper(StructMysql):
     """
     Bin Log Packet Wrapper. It uses an existing packet object, and wraps
@@ -56,7 +57,7 @@ class BinLogPacketWrapper(StructMysql):
         constants.WRITE_ROWS_EVENT_V2: row_event.WriteRowsEvent,
         constants.DELETE_ROWS_EVENT_V2: row_event.DeleteRowsEvent,
         constants.TABLE_MAP_EVENT: row_event.TableMapEvent,
-        #5.6 GTID enabled replication events
+        # 5.6 GTID enabled replication events
         constants.ANONYMOUS_GTID_LOG_EVENT: event.NotImplementedEvent,
         constants.PREVIOUS_GTIDS_LOG_EVENT: event.NotImplementedEvent
 
@@ -105,7 +106,8 @@ class BinLogPacketWrapper(StructMysql):
             event_size_without_header = self.event_size - 19
 
         self.event = None
-        event_class = self.__event_map.get(self.event_type, event.NotImplementedEvent)
+        event_class = self.__event_map.get(
+            self.event_type, event.NotImplementedEvent)
 
         if event_class not in allowed_events:
             return
@@ -366,12 +368,12 @@ class BinLogPacketWrapper(StructMysql):
             key_offset_lengths = [(
                 self.read_uint32(),  # offset (we don't actually need that)
                 self.read_uint16()   # size of the key
-                ) for _ in range(elements)]
+            ) for _ in range(elements)]
         else:
             key_offset_lengths = [(
                 self.read_uint16(),  # offset (we don't actually need that)
                 self.read_uint16()   # size of key
-                ) for _ in range(elements)]
+            ) for _ in range(elements)]
 
         value_type_inlined_lengths = [read_offset_or_inline(self, large)
                                       for _ in range(elements)]
